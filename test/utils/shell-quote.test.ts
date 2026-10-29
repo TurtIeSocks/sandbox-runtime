@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'bun:test'
 import * as fc from 'fast-check'
 import { spawnSync } from 'node:child_process'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import * as path from 'node:path'
 import { wrapCommandWithSandboxMacOS } from '../../src/sandbox/macos-sandbox-utils.js'
 import { quote, quoteForCmd } from '../../src/utils/shell-quote.js'
 import { whichSync } from '../../src/utils/which.js'
@@ -141,6 +144,12 @@ describe('quoteForCmd', () => {
     )
   })
 
+  it('refuses a program name cmd would read past its quotes', () => {
+    for (const name of ['a"b', '%PATH%\\x.exe', 'a\nb']) {
+      expect(() => quoteForCmd([name])).toThrow('cannot pass the program name')
+    }
+  })
+
   it('leaves a Windows path bare', () => {
     expect(quoteForCmd(['node', 'C:\\Users\\me\\f.js'])).toBe(
       'node C:\\Users\\me\\f.js',
@@ -162,16 +171,23 @@ describe('quoteForCmd', () => {
     'round-trips through cmd.exe /d /s /c',
     () => {
       const comspec = process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe'
-      const printArgv =
-        'process.stdout.write(JSON.stringify(process.argv.slice(1)))'
-      // Node, not the test runner: bun reads some of a script's arguments as
-      // its own. Node's default install path has a space, which the program
-      // name's quoting has to carry.
+      // A script file, not `-e`: node stops reading its own options at the
+      // file name, where after `-e` it still reads an argument such as `- `.
+      // Node rather than the test runner, whose default install path has the
+      // space the program name's quoting has to carry.
+      const printArgv = path.join(
+        mkdtempSync(path.join(tmpdir(), 'quote-for-cmd-')),
+        'argv.js',
+      )
+      writeFileSync(
+        printArgv,
+        'process.stdout.write(JSON.stringify(process.argv.slice(2)))',
+      )
       const node = whichSync('node') ?? process.execPath
 
       /** The command line srt-win builds: post-`/c` content wrapped once. */
       function roundTrip(args: string[]): string[] {
-        const command = quoteForCmd([node, '-e', printArgv, ...args])
+        const command = quoteForCmd([node, printArgv, ...args])
         const result = spawnSync(comspec, ['/d', '/s', '/c', `"${command}"`], {
           encoding: 'utf8',
           windowsVerbatimArguments: true,

@@ -71,8 +71,16 @@ export function quoteForCmd(args: readonly string[]): string {
         return arg
       }
       // cmd finds the executable before any argv parsing and honours plain
-      // quotes there; a Windows file name cannot hold a `"`.
+      // quotes there. Inside them it still expands `%` and ends the line at
+      // a line break, and a `"` would close them, so a program name holding
+      // any of those is refused rather than run as something else.
       if (i === 0) {
+        if (/["%\r\n\0]/.test(arg)) {
+          throw new Error(
+            `cannot pass the program name ${JSON.stringify(arg)} to cmd.exe: ` +
+              'it holds a ", %, or line break. Use -c to give the command line yourself.',
+          )
+        }
         return '"' + arg + '"'
       }
       // MSVCRT: backslashes are literal unless they precede a `"`, so double
