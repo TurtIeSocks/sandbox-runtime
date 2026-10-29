@@ -54,8 +54,8 @@ const CMD_META = /([()\][%!^"`<>&|;, *?])/g
  * Escape an argument list into one command line for `cmd.exe /d /s /c`,
  * which is how the CLI runs a command on Windows. Each argument is quoted
  * for the program's own argv parser (the MSVCRT rules), then every cmd
- * metacharacter is caret-escaped. The program name is only caret-escaped,
- * since cmd finds the executable before any argv parsing.
+ * metacharacter is caret-escaped. The program name is wrapped in plain
+ * quotes instead, which is what cmd reads when it finds the executable.
  *
  * {@link quote}'s POSIX single quotes mean nothing to cmd, so they reached
  * the program as literal characters around any argument holding a `\`,
@@ -70,8 +70,10 @@ export function quoteForCmd(args: readonly string[]): string {
       if (/^[A-Za-z0-9_./:\\@+-]+$/.test(arg)) {
         return arg
       }
+      // cmd finds the executable before any argv parsing and honours plain
+      // quotes there; a Windows file name cannot hold a `"`.
       if (i === 0) {
-        return arg.replace(CMD_META, '^$1')
+        return '"' + arg + '"'
       }
       // MSVCRT: backslashes are literal unless they precede a `"`, so double
       // the ones before an embedded quote and the ones before the closing one.

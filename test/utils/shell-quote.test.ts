@@ -135,6 +135,12 @@ describe('quote', () => {
  * path in them, so `C:\x\f.js` arrived as `'C:\x\f.js'`.
  */
 describe('quoteForCmd', () => {
+  it('wraps a program name in plain quotes for cmd', () => {
+    expect(quoteForCmd(['C:\\Program Files\\nodejs\\node.exe', 'x'])).toBe(
+      '"C:\\Program Files\\nodejs\\node.exe" x',
+    )
+  })
+
   it('leaves a Windows path bare', () => {
     expect(quoteForCmd(['node', 'C:\\Users\\me\\f.js'])).toBe(
       'node C:\\Users\\me\\f.js',
@@ -158,15 +164,14 @@ describe('quoteForCmd', () => {
       const comspec = process.env.ComSpec ?? 'C:\\Windows\\System32\\cmd.exe'
       const printArgv =
         'process.stdout.write(JSON.stringify(process.argv.slice(1)))'
+      // Node, not the test runner: bun reads some of a script's arguments as
+      // its own. Node's default install path has a space, which the program
+      // name's quoting has to carry.
+      const node = whichSync('node') ?? process.execPath
 
       /** The command line srt-win builds: post-`/c` content wrapped once. */
       function roundTrip(args: string[]): string[] {
-        const command = quoteForCmd([
-          process.execPath,
-          '-e',
-          printArgv,
-          ...args,
-        ])
+        const command = quoteForCmd([node, '-e', printArgv, ...args])
         const result = spawnSync(comspec, ['/d', '/s', '/c', `"${command}"`], {
           encoding: 'utf8',
           windowsVerbatimArguments: true,
