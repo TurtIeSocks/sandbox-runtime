@@ -44,3 +44,40 @@ export function quote(args: readonly string[]): string {
     })
     .join(' ')
 }
+
+// cmd.exe's metacharacters, each escaped with `^` so cmd passes it through
+// literally. `"` is among them, so cmd never enters its own quote state and
+// the quotes reach the program for its argv parser.
+const CMD_META = /([()\][%!^"`<>&|;, *?])/g
+
+/**
+ * Escape an argument list into one command line for `cmd.exe /d /s /c`,
+ * which is how the CLI runs a command on Windows. Each argument is quoted
+ * for the program's own argv parser (the MSVCRT rules), then every cmd
+ * metacharacter is caret-escaped. The program name is only caret-escaped,
+ * since cmd finds the executable before any argv parsing.
+ *
+ * {@link quote}'s POSIX single quotes mean nothing to cmd, so they reached
+ * the program as literal characters around any argument holding a `\`,
+ * which is every absolute Windows path.
+ *
+ * @param args - The argument list to escape, the program first
+ * @returns A single string that cmd runs as exactly that argument list
+ */
+export function quoteForCmd(args: readonly string[]): string {
+  return args
+    .map((arg, i) => {
+      if (/^[A-Za-z0-9_./:\\@+-]+$/.test(arg)) {
+        return arg
+      }
+      if (i === 0) {
+        return arg.replace(CMD_META, '^$1')
+      }
+      // MSVCRT: backslashes are literal unless they precede a `"`, so double
+      // the ones before an embedded quote and the ones before the closing one.
+      const msvcrt =
+        '"' + arg.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\*)$/, '$1$1') + '"'
+      return msvcrt.replace(CMD_META, '^$1')
+    })
+    .join(' ')
+}
